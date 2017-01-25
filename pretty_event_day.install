@@ -1,0 +1,137 @@
+<?php
+
+/**
+ * Implements hook_install().
+ */
+function pretty_event_day_install() {
+  // Create event_day vocabulary if doesn't exist.
+  if (!($vocabulary = taxonomy_vocabulary_machine_name_load('event_day'))) {
+    $edit = array(
+      'name' => 'Event Day',
+      'machine_name' => 'event_day',
+      'description' => t('Use to store some Event Days.'),
+      // TODO:
+      'module' => 'pretty_event_day',
+    );
+    $vocabulary = (object) $edit;
+    taxonomy_vocabulary_save($vocabulary);
+  }
+  // Create term reference event_day field base.
+  if (!field_info_field('event_day')) {
+    $field_base_event_day = array(
+      'active' => 1,
+      'cardinality' => 1,
+      'deleted' => 0,
+      'entity_types' => array(),
+      'field_name' => 'event_day',
+      'field_permissions' => array(
+        'type' => 0,
+      ),
+      'indexes' => array(
+        'tid' => array(
+          0 => 'tid',
+        ),
+      ),
+      'locked' => 0,
+      'module' => 'taxonomy',
+      'settings' => array(
+        'allowed_values' => array(
+          0 => array(
+            'vocabulary' => 'event_day',
+            'parent' => 0,
+          ),
+        ),
+      ),
+      'translatable' => 0,
+      'type' => 'taxonomy_term_reference',
+    );
+    field_create_field($field_base_event_day);
+  }
+  // Create event_day_date field base if needed.
+  if (!field_info_field('event_day_date')) {
+    $field_base_date = array(
+      'active' => 1,
+      'cardinality' => 1,
+      'deleted' => 0,
+      'entity_types' => array(),
+      'field_name' => 'event_day_date',
+      'field_permissions' => array(
+        'type' => 0,
+      ),
+      'indexes' => array(),
+      'locked' => 0,
+      'module' => 'date',
+      'settings' => array(
+        'cache_count' => 4,
+        'cache_enabled' => 0,
+        'granularity' => array(
+          'day' => 'day',
+          'hour' => 0,
+          'minute' => 0,
+          'month' => 'month',
+          'second' => 0,
+          'year' => 'year',
+        ),
+        'timezone_db' => 'UTC',
+        'todate' => '',
+        'tz_handling' => 'site',
+      ),
+      'translatable' => 0,
+      'type' => 'datetime',
+    );
+    field_create_field($field_base_date);
+  }
+  // Create event_day_date field instance for event_day taxonomy_term if needed.
+  if (!field_info_instance('taxonomy_term', 'event_day_date', 'event_day')) {
+    $field_instance_date_event_day_date = array(
+      'entity_type' => 'taxonomy_term',
+      'bundle' => 'event_day',
+      'deleted' => 0,
+      'description' => 'Choose this day\'s date',
+      'field_name' => 'event_day_date',
+      'label' => 'Day Date',
+      'required' => 1,
+      'settings' => array(
+        'default_value' => 'now',
+        'default_value2' => 'same',
+        'default_value_code' => '',
+        'default_value_code2' => '',
+        'user_register_form' => FALSE,
+      ),
+      'widget' => array(
+        'active' => 1,
+        'module' => 'date',
+        'settings' => array(
+          'increment' => 15,
+          'input_format' => 'm/d/Y - H:i:s',
+          'input_format_custom' => '',
+          'label_position' => 'above',
+          'no_fieldset' => 0,
+          'text_parts' => array(),
+          'year_range' => '-3:+3',
+        ),
+        'type' => 'date_popup',
+        'weight' => 1,
+      ),
+    );
+    field_create_instance($field_instance_date_event_day_date);
+  }
+  // Create variable to store pretty_event_day settings.
+  variable_set('pretty_event_day_settings', array());
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function pretty_event_day_uninstall() {
+  if ($instance = field_info_field('event_day_date')) {
+    field_delete_field('event_day_date');
+  }
+  if (!field_info_field('event_day')) {
+    field_delete_field('event_day');
+  }
+  if ($vocabulary = taxonomy_vocabulary_machine_name_load('event_day')) {
+    taxonomy_vocabulary_delete($vocabulary->vid);
+  }
+  variable_del('pretty_event_day_settings');
+}

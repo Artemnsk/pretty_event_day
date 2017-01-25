@@ -1,0 +1,139 @@
+<?php
+
+// TODO: for search: search_api_track_item_change which use this event_day.
+// TODO: admin settings for search indexing or validation for nodes if Day not found by field_date or other settings.
+
+function pretty_event_day_menu() {
+  $items['admin/config/pretty-event-day'] = array(
+    'title' => 'Pretty event day',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('pretty_event_day_admin_form'),
+    // TODO: separate permission?
+    'access arguments' => array('administer content'),
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'pretty_event_day.admin.inc',
+  );
+
+  return $items;
+}
+
+/**
+ * Implements hook_entity_presave().
+ */
+function pretty_event_day_entity_presave($entity, $type) {
+  _pretty_event_day_update_field_event_day($entity, $type);
+}
+
+/**
+ * Implements hook_entity_update().
+ */
+function pretty_event_day_entity_update($entity, $type) {
+  _pretty_event_day_manage_event_days_cache($entity, $type);
+  // TODO: Update all entities with field_event_date field instance?
+}
+
+/**
+ * Implements hook_entity_delete().
+ */
+function pretty_event_day_entity_delete($entity, $type) {
+  _pretty_event_day_manage_event_days_cache($entity, $type);
+  // TODO: Update all entities with field_event_date field instance?
+}
+
+/**
+ * Implements hook_entity_insert().
+ */
+function pretty_event_day_entity_insert($entity, $type) {
+  _pretty_event_day_manage_event_days_cache($entity, $type);
+  // TODO: Update all entities with field_event_date field instance?
+}
+
+function _pretty_event_day_update_field_event_day($entity, $type) {
+  $pretty_event_day_settings = variable_get('pretty_event_day_settings', array());
+  list(, , $bundle) = entity_extract_ids($type, $entity);
+  foreach ($pretty_event_day_settings as $setting) {
+    // If current entity really has such date field to synchronize with we proceed.
+    if ($date_field_name = preg_replace("/^$type\|$bundle\|(.*)$/", '$1', $setting)) {
+      $entity_wrapper = entity_metadata_wrapper($type, $entity);
+      $entity_property_info = $entity_wrapper->getPropertyInfo();
+      // Proceed if current entity has datetime field from settings and event_day field instances.
+      if (!empty($entity_property_info[$date_field_name]) && !empty($entity_property_info['event_day'])) {
+        // Determine proper event_day term to update entity's event_day with.
+        // Get current entity datetime field value.
+        if ($date_value = $entity_wrapper->{$date_field_name}->value()) {
+          $date_object = new DateObject($date_value['value'], $date_value['timezone_db']);
+          // Convert from timezone_db into actual timezone.
+          if ($date_value['timezone_db'] != $date_value['timezone']) {
+            $timezone_object = new DateTimeZone($date_value['timezone']);
+            $date_object->setTimezone($timezone_object);
+          }
+          $day_key = $date_object->format('Y-m-d');
+          // Now we need to retrieve a list of days and find our key if possible.
+          $event_days_terms_by_day = pretty_event_day_get_event_days_by_day($entity, $type, $date_value['timezone']);
+          if (isset($event_days_terms_by_day[$day_key])) {
+            $available_options = $event_days_terms_by_day[$day_key];
+            // Alter available options.
+            drupal_alter('pretty_event_day_options', $available_options, $entity, $type);
+            if (!empty($available_options)) {
+              // Set first term from available_options for current entity for event_day field.
+              $day_tid = reset($available_options);
+              $entity_wrapper->event_day->set($day_tid);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Unset cache for pretty_event_day_get_event_days_by_day().
+ * This function used for any action with event_day vocabulary: update/insert/delete.
+ */
+function _pretty_event_day_manage_event_days_cache($entity, $type) {
+  // Then we ensure that it is term of event_day vocabulary.
+  list(, , $bundle) = entity_extract_ids($type, $entity);
+  if ($type == 'taxonomy_term' && $bundle == 'event_day') {
+    // Unset cache.
+    $bin = 'cache';
+    $cid_wildcard = 'pretty_event_day_get_event_days_by_day';
+    cache_clear_all($cid_wildcard, $bin, TRUE);
+  }
+}
+
+/**
+ * Returns a list of all available Event Days in the following format:
+ *  array("Y-m-d" => <tid>)
+ */
+function pretty_event_day_get_event_days_by_day($entity, $type, $timezone = 'UTC') {
+  // Cache of response depends on timezone.
+  $cid = __FUNCTION__ . $timezone;
+  $bin = 'cache';
+  // Try to reuse cache.
+  if ($cache = cache_get($cid, $bin)) {
+    if ($cache->expire >= REQUEST_TIME) {
+      return $cache->data;
+    }
+  }
+  // Let's proceed if no cache found.
+  $key_format = 'Y-m-d';
+  $response = array();
+  // FIXME: which one to use ??
+  $event_day_terms = handy_taxonomy_get_tree('event_day', 0, NULL, TRUE);
+  foreach ($event_day_terms as $event_day_term) {
+    $term_wrapper = entity_metadata_wrapper('taxonomy_term', $event_day_term);
+    // NOTICE: Interesting that EMW returns timestamp for taxonomy term EMW instead of array with timezones, values etc.
+    // NOTICE: So yes, we have timestamp.
+    $date_timestamp = $term_wrapper->event_day_date->value();
+    $date_obj = new DateObject($date_timestamp, $timezone);
+    $response_key = $date_obj->format($key_format);
+    if (!isset($response[$response_key])) {
+      $response[$response_key] = array();
+    }
+    $response[$response_key][] = $term_wrapper->getIdentifier();
+  }
+  // Cache response for specified time.
+  $cache_time = 24 * 60 * 60;
+  cache_set($cid, $response, $bin, REQUEST_TIME + $cache_time);
+  return $response;
+}
