@@ -1,4 +1,5 @@
 name = Pretty Event Day
 core = 7.x
+project = pretty_event_day
 package = Custom
-project status url = http://himss:media@ec2-35-163-164-247.us-west-2.compute.amazonaws.com
+project status url = https://raw.githubusercontent.com/Artemnsk/pretty_event_day/master/release.xml#
